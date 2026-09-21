@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 function ExpenseTracker() {
@@ -6,26 +6,33 @@ function ExpenseTracker() {
   const CONTEXT = import.meta.env.VITE_CONTEXT_PATH;
   const API = import.meta.env.VITE_API_URI;
 
-  const [expenses, setExpenses] = useState([]);
-  const [expense, setExpense] = useState({
-    amount: "",
-    description: "",
-    spendingDate: "",
-    spendingTime: "",
-  });
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [spendingDate, setSpendingDate] = useState("");
-  const [spendingTime, setSpendingTime] = useState("");
-  const [show, setShow] = useState(true);
-
   const location = useLocation();
-
-  const state = location.state?.userType;
-
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const userType = location.state?.userType;
+
+  const [expenses, setExpenses] = useState([]);
+
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+
+  const [spendingDate, setSpendingDate] = useState("");
+  const [spendingTime, setSpendingTime] = useState("");
+
+  const [editingExpense, setEditingExpense] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [addingExpense, setAddingExpense] = useState(false);
+  const [updatingExpense, setUpdatingExpense] = useState(false);
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // --------------------------------------------------
+  // Set current date/time
+  // --------------------------------------------------
+
+  const setCurrentDateTime = () => {
     const now = new Date();
 
     const date = now.toISOString().split("T")[0];
@@ -33,340 +40,1027 @@ function ExpenseTracker() {
 
     setSpendingDate(date);
     setSpendingTime(time);
+  };
 
-    const getExpenses = async () => {
-      const expenseURL = `${BASE_URL}/${CONTEXT}/${API}/user/get_expense_records_user`;
-      // console.log("Expense url: " + expenseURL);
-      try {
-        const response = await fetch(expenseURL, {
-          method: "GET",
-          credentials: "include",
-        });
-        if (!response.ok) throw new Error("Failed to fetch expenses");
+  // --------------------------------------------------
+  // Fetch expenses
+  // --------------------------------------------------
 
-        const expenseData = await response.json();
+  const getExpenses = async () => {
+    const expenseURL =
+      `${BASE_URL}/${CONTEXT}/${API}/user/get_expense_records_user`;
 
-        // console.log(expenseData);
-
-        setExpenses(expenseData);
-      } catch (error) {
-        console.log("Error: " + error);
-      }
-    };
-    getExpenses();
-  }, [amount, description]);
-
-  const addExpense = async (e) => {
-    // console.log("added expense");
-    const expense = {
-      amount: amount,
-      description: description,
-      spendingDate: spendingDate,
-      spendingTime: spendingTime,
-    };
-    // console.log(JSON.stringify(expense));
     try {
-      const response = await fetch(
-        `${BASE_URL}/${CONTEXT}/${API}/user/add_expense`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify(expense),
-        },
-      );
-      if (!response.ok) throw new Error("Unable to add expense");
+      setLoading(true);
+      setError("");
+
+      const response = await fetch(expenseURL, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch expenses");
+      }
+
       const expenseData = await response.json();
-      // console.log(expenseData);
-      // clear form
-      setAmount("");
-      setDescription("");
-      setSpendingDate("");
-      setSpendingTime("");
+
+      setExpenses(expenseData);
     } catch (error) {
-      console.log(error);
+      setError(error.message || "Unable to load expenses.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const updateExpense = async (e) => {
-    const updateURL = `${BASE_URL}/${CONTEXT}/${API}/user/update_expense/${expense.id}`;
-    // console.log(
-    //   "Expense: " + JSON.stringify(expense) + ", update log: " + updateURL,
-    // );
+  // --------------------------------------------------
+  // Initial load
+  // --------------------------------------------------
+
+  useEffect(() => {
+    setCurrentDateTime();
+    getExpenses();
+  }, []);
+
+  // --------------------------------------------------
+  // Add expense
+  // --------------------------------------------------
+
+  const addExpense = async (e) => {
+    e.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    if (!amount || Number(amount) <= 0) {
+      setError("Please enter a valid expense amount.");
+      return;
+    }
+
+    if (!description.trim()) {
+      setError("Please enter an expense description.");
+      return;
+    }
+
+    const newExpense = {
+      amount,
+      description,
+      spendingDate,
+      spendingTime,
+    };
+
+    const addExpenseURL =
+      `${BASE_URL}/${CONTEXT}/${API}/user/add_expense`;
+
     try {
+      setAddingExpense(true);
+
+      const response = await fetch(addExpenseURL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(newExpense),
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to add expense.");
+      }
+
+      await response.json();
+
+      setAmount("");
+      setDescription("");
+
+      setCurrentDateTime();
+
+      await getExpenses();
+
+      setSuccess("Expense added successfully.");
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 2500);
+    } catch (error) {
+      setError(error.message || "Unable to add expense.");
+    } finally {
+      setAddingExpense(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // Start editing
+  // --------------------------------------------------
+
+  const editExpense = (expense) => {
+    setError("");
+    setSuccess("");
+
+    setEditingExpense({
+      ...expense,
+    });
+  };
+
+  // --------------------------------------------------
+  // Cancel editing
+  // --------------------------------------------------
+
+  const cancelEdit = () => {
+    setEditingExpense(null);
+    setError("");
+  };
+
+  // --------------------------------------------------
+  // Update expense
+  // --------------------------------------------------
+
+  const updateExpense = async (e) => {
+    e.preventDefault();
+
+    if (!editingExpense) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    if (
+      !editingExpense.amount ||
+      Number(editingExpense.amount) <= 0
+    ) {
+      setError("Please enter a valid expense amount.");
+      return;
+    }
+
+    if (!editingExpense.description.trim()) {
+      setError("Please enter an expense description.");
+      return;
+    }
+
+    const updateURL =
+      `${BASE_URL}/${CONTEXT}/${API}/user/update_expense/${editingExpense.id}`;
+
+    try {
+      setUpdatingExpense(true);
+
       const response = await fetch(updateURL, {
         method: "PUT",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(expense),
+        body: JSON.stringify(editingExpense),
       });
-      if (!response.ok) throw new Error("Unable to update expense");
-      else setShow(true);
+
+      if (!response.ok) {
+        throw new Error("Unable to update expense.");
+      }
+
+      await getExpenses();
+
+      setEditingExpense(null);
+
+      setSuccess("Expense updated successfully.");
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 2500);
     } catch (error) {
-      console.log(error);
+      setError(error.message || "Unable to update expense.");
+    } finally {
+      setUpdatingExpense(false);
     }
   };
 
-  const editExpense = (expense) => {
-    setShow(false);
-    setExpense(expense);
-    // console.log("Expense in edit: " + JSON.stringify(expense));
-  };
+  // --------------------------------------------------
+  // Delete expense
+  // --------------------------------------------------
 
   const deleteExpense = async (id) => {
-    // console.log("Expense " + id + " delete");
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this expense?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
     try {
-      const del = await fetch(
-        `${BASE_URL}/${CONTEXT}/${API}/user/delete_expense/` + id,
-        {
-          method: "DELETE",
-          credentials: "include",
-        },
-      );
-      if (del.ok) {
-        setExpenses((prevExpense) =>
-          prevExpense.filter((expense) => expense.id != id),
-        );
-      } else {
-        throw new Error(id + " expense doesn't exist");
+      const deleteURL =
+        `${BASE_URL}/${CONTEXT}/${API}/user/delete_expense/${id}`;
+
+      const response = await fetch(deleteURL, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to delete expense.");
       }
+
+      setExpenses((previousExpenses) =>
+        previousExpenses.filter(
+          (expense) => expense.id !== id
+        )
+      );
+
+      setSuccess("Expense deleted successfully.");
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 2500);
     } catch (error) {
-      console.log(error);
+      setError(error.message || "Unable to delete expense.");
     }
   };
+
+  // --------------------------------------------------
+  // Logout
+  // --------------------------------------------------
 
   const logout = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/${CONTEXT}/logout`, {
-        method: "PUT",
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("unable to logout");
+      const response = await fetch(
+        `${BASE_URL}/${CONTEXT}/logout`,
+        {
+          method: "PUT",
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Unable to logout");
+      }
+
       navigate("/login");
     } catch (error) {
-      console.log("Unable to log out");
+      setError("Unable to logout. Please try again.");
     }
   };
 
+  // --------------------------------------------------
+  // Dashboard calculations
+  // --------------------------------------------------
+
+  const totalExpenses = useMemo(() => {
+    return expenses.reduce(
+      (total, expense) => total + Number(expense.amount || 0),
+      0
+    );
+  }, [expenses]);
+
+  const averageExpense = useMemo(() => {
+    if (expenses.length === 0) {
+      return 0;
+    }
+
+    return totalExpenses / expenses.length;
+  }, [expenses, totalExpenses]);
+
+  const highestExpense = useMemo(() => {
+    if (expenses.length === 0) {
+      return 0;
+    }
+
+    return Math.max(
+      ...expenses.map((expense) =>
+        Number(expense.amount || 0)
+      )
+    );
+  }, [expenses]);
+
+  // --------------------------------------------------
+  // Format currency
+  // --------------------------------------------------
+
+  const formatCurrency = (value) => {
+    return Number(value || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
   return (
-    <>
-      <div className="flex flex-row m-3 justify-between">
-        <div>
-          <button
-            className="bg-red-500 text-white pb-1 pt-1 pr-3 pl-3 rounded-2xl hover:bg-red-900"
-            onClick={() => logout()}
-          >
-            ╰┈➤ Logout
-          </button>
-        </div>
-        <div>
-          <button
-            hidden={state != "ADMIN"}
-            className="bg-blue-500 text-white pb-1 pt-1 pr-3 pl-3 rounded-2xl hover:bg-blue-900"
-            onClick={() => navigate("/users")}
-          >
-            Manage User
-          </button>
-        </div>
-      </div>
-      <div className="mt-4 items-center justify-center">
-        <form onSubmit={addExpense}>
-          <div className="flex flex-row place-content-evenly mb-10 ml-5 mr-5 p-3 rounded-xl border-2 shadow-2xl">
-            <div>
-              <input
-                className="rounded-2xl border-2 p-2 mt-1"
-                type="text"
-                placeholder="Amount"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
-            <div>
-              <input
-                className="rounded-2xl border-2 p-2 mt-1"
-                type="text"
-                placeholder="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-            <div>
-              <input
-                className="rounded-2xl border-2 p-2 mt-1"
-                type="text"
-                placeholder="spendingDate"
-                value={spendingDate}
-                readOnly
-                disabled
-              />
-            </div>
-            <div>
-              <input
-                className="rounded-2xl border-2 p-2 mt-1"
-                type="text"
-                placeholder="spendingTime"
-                value={spendingTime}
-                readOnly
-                disabled
-              />
-            </div>
-            <div>
-              <button
-                className="bg-blue-600 text-white p-2 mt-1 rounded-2xl hover:bg-blue-900"
-                type="submit"
-              >
-                Add Expense
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div className="flex flex-col items-center justify-center">
-        <div className="text-3xl mb-10 p-3 rounded-b-xl shadow-2xl">
-          <h2>My Expenses</h2>
-        </div>
+    <div className="min-h-screen bg-slate-100">
 
-        <div className="overflow-hidden rounded-xl shadow-xl border border-black">
-          <table className="border-collapse">
-            <thead>
-              <tr>
-                <th className="px-6 py-3 border-r border-gray-500">Amount</th>
-                <th className="px-6 py-3 border-r border-gray-500">
-                  Description
-                </th>
-                <th className="px-6 py-3 border-r border-gray-500">
-                  Spending Time
-                </th>
-                <th className="px-6 py-3">Action</th>
-              </tr>
-            </thead>
+      {/* ==================================================
+          NAVBAR
+      ================================================== */}
 
-            <tbody>
-              {expenses.map((expense) => (
-                <tr
-                  key={expense.id}
-                  className="border-t border-black hover:bg-gray-100 transition-colors"
+      <nav className="bg-slate-950 text-white shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div className="h-20 flex items-center justify-between">
+
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+
+              <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
+                <span className="text-xl">₹</span>
+              </div>
+
+              <div>
+                <h1 className="text-lg font-bold">
+                  Expense Tracker
+                </h1>
+
+                <p className="text-xs text-slate-400">
+                  Personal Finance Dashboard
+                </p>
+              </div>
+
+            </div>
+
+            {/* Navigation */}
+            <div className="flex items-center gap-3">
+
+              {userType === "ADMIN" && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/users")}
+                  className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl
+                  bg-slate-800 hover:bg-slate-700 text-sm font-medium
+                  transition-colors"
                 >
-                  <td className="px-6 py-3 text-center border-r border-black">
-                    ₹{expense.amount}
-                  </td>
+                  <span>👥</span>
+                  Manage Users
+                </button>
+              )}
 
-                  <td className="px-6 py-3 border-r border-black">
-                    {expense.description}
-                  </td>
+              <button
+                type="button"
+                onClick={logout}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl
+                bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white
+                border border-red-500/20 text-sm font-medium transition-colors"
+              >
+                <span>↪</span>
+                <span className="hidden sm:inline">
+                  Logout
+                </span>
+              </button>
 
-                  <td className="px-6 py-3 text-center border-r border-black">
-                    {expense.spendingDate} {expense.spendingTime}
-                  </td>
+            </div>
+          </div>
 
-                  <td className="px-6 py-3">
-                    <div className="flex gap-3 justify-center">
-                      <button
-                        className="cursor-pointer hover:scale-125 transition-transform"
-                        onClick={() => editExpense(expense)}
-                      >
-                        ✏️
-                      </button>
-
-                      <button
-                        className="cursor-pointer hover:scale-125 transition-transform"
-                        onClick={() => deleteExpense(expense.id)}
-                      >
-                        🧹
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
-      </div>
-      <form onSubmit={updateExpense}>
-        <div
-          className="flex flex-row place-content-evenly mt-10 mb-10 ml-5 mr-5 p-3 rounded-xl border-2 shadow-2xl"
-          hidden={show}
-        >
-          <div>
-            <button
-              className="bg-green-500 text-white p-2 mt-1 rounded-2xl hover:bg-red-900"
-              onClick={() => setShow(true)}
-            >
-              ❌️Cancel
-            </button>
-          </div>
-          <div>
-            <input
-              className="rounded-2xl border-2 p-2 mt-1"
-              type="text"
-              placeholder="Amount"
-              value={expense.amount}
-              onChange={(e) =>
-                setExpense({ ...expense, amount: e.target.value })
-              }
-            />
-          </div>
-          <div>
-            <input
-              className="rounded-2xl border-2 p-2 mt-1"
-              type="text"
-              placeholder="description"
-              value={expense.description}
-              onChange={(e) =>
-                setExpense({
-                  ...expense,
-                  description: e.target.value,
-                })
-              }
-            />
-          </div>
-          <div>
-            <input
-              className="rounded-2xl border-2 p-2 mt-1"
-              type="text"
-              placeholder="spendingDate"
-              value={new Date().toISOString().split("T")[0]}
-              onChange={() =>
-                setExpense({
-                  ...expense,
-                  spendingDate: new Date().toISOString().split("T")[0],
-                })
-              }
-              readOnly
-              disabled
-            />
-          </div>
-          <div>
-            <input
-              className="rounded-2xl border-2 p-2 mt-1"
-              type="text"
-              placeholder="spendingTime"
-              value={new Date().toTimeString().split(" ")[0]}
-              onChange={() =>
-                setExpense({
-                  ...expense,
-                  spendingTime: new Date().toTimeString().split(" ")[0],
-                })
-              }
-              readOnly
-              disabled
-            />
-          </div>
-          <div>
-            <button
-              className="bg-blue-600 text-white p-2 mt-1 rounded-2xl hover:bg-blue-900"
-              type="submit"
-            >
-              Update Expense
-            </button>
-          </div>
+      </nav>
+
+      {/* ==================================================
+          MAIN CONTENT
+      ================================================== */}
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        {/* Page heading */}
+
+        <div className="mb-8">
+
+          <p className="text-sm font-medium text-blue-600 mb-1">
+            OVERVIEW
+          </p>
+
+          <h2 className="text-3xl font-bold text-slate-900">
+            My Expenses
+          </h2>
+
+          <p className="text-slate-500 mt-1">
+            Keep track of your spending and manage your expenses.
+          </p>
+
         </div>
-      </form>
-    </>
+
+        {/* ==================================================
+            ALERTS
+        ================================================== */}
+
+        {error && (
+          <div className="mb-6 flex items-center justify-between gap-4
+          rounded-xl border border-red-200 bg-red-50 px-4 py-3
+          text-sm text-red-700">
+
+            <div className="flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{error}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setError("")}
+              className="text-red-500 hover:text-red-800"
+            >
+              ✕
+            </button>
+
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-6 flex items-center gap-2
+          rounded-xl border border-green-200 bg-green-50 px-4 py-3
+          text-sm text-green-700">
+
+            <span>✓</span>
+            <span>{success}</span>
+
+          </div>
+        )}
+
+        {/* ==================================================
+            SUMMARY CARDS
+        ================================================== */}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+
+          {/* Total */}
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+
+            <div className="flex items-start justify-between">
+
+              <div>
+                <p className="text-sm font-medium text-slate-500">
+                  Total Spending
+                </p>
+
+                <h3 className="text-3xl font-bold text-slate-900 mt-2">
+                  ₹{formatCurrency(totalExpenses)}
+                </h3>
+              </div>
+
+              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-xl">
+                💰
+              </div>
+
+            </div>
+
+            <p className="text-xs text-slate-400 mt-4">
+              Across all recorded expenses
+            </p>
+
+          </div>
+
+          {/* Number of expenses */}
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+
+            <div className="flex items-start justify-between">
+
+              <div>
+                <p className="text-sm font-medium text-slate-500">
+                  Total Transactions
+                </p>
+
+                <h3 className="text-3xl font-bold text-slate-900 mt-2">
+                  {expenses.length}
+                </h3>
+              </div>
+
+              <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-xl">
+                🧾
+              </div>
+
+            </div>
+
+            <p className="text-xs text-slate-400 mt-4">
+              Recorded transactions
+            </p>
+
+          </div>
+
+          {/* Average */}
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+
+            <div className="flex items-start justify-between">
+
+              <div>
+                <p className="text-sm font-medium text-slate-500">
+                  Average Expense
+                </p>
+
+                <h3 className="text-3xl font-bold text-slate-900 mt-2">
+                  ₹{formatCurrency(averageExpense)}
+                </h3>
+              </div>
+
+              <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-xl">
+                📊
+              </div>
+
+            </div>
+
+            <p className="text-xs text-slate-400 mt-4">
+              Average per transaction
+            </p>
+
+          </div>
+
+        </div>
+
+        {/* ==================================================
+            ADD EXPENSE
+        ================================================== */}
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8">
+
+          <div className="px-6 py-5 border-b border-slate-200">
+
+            <div className="flex items-center gap-3">
+
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                ➕
+              </div>
+
+              <div>
+                <h3 className="font-bold text-slate-900">
+                  Add New Expense
+                </h3>
+
+                <p className="text-sm text-slate-500">
+                  Record a new transaction
+                </p>
+              </div>
+
+            </div>
+
+          </div>
+
+          <form
+            onSubmit={addExpense}
+            className="p-6"
+          >
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+
+              {/* Amount */}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Amount
+                </label>
+
+                <div className="relative">
+
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    ₹
+                  </span>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    required
+                    className="w-full pl-9 pr-4 py-3 rounded-xl border border-slate-200
+                    bg-slate-50 focus:outline-none focus:ring-2
+                    focus:ring-blue-500 focus:border-transparent transition"
+                  />
+
+                </div>
+              </div>
+
+              {/* Description */}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Description
+                </label>
+
+                <input
+                  type="text"
+                  placeholder="e.g. Groceries"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200
+                  bg-slate-50 focus:outline-none focus:ring-2
+                  focus:ring-blue-500 focus:border-transparent transition"
+                />
+              </div>
+
+              {/* Date */}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Date
+                </label>
+
+                <input
+                  type="text"
+                  value={spendingDate}
+                  readOnly
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200
+                  bg-slate-100 text-slate-500 cursor-not-allowed"
+                />
+              </div>
+
+              {/* Time */}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Time
+                </label>
+
+                <input
+                  type="text"
+                  value={spendingTime}
+                  readOnly
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200
+                  bg-slate-100 text-slate-500 cursor-not-allowed"
+                />
+              </div>
+
+            </div>
+
+            <div className="mt-6 flex justify-end">
+
+              <button
+                type="submit"
+                disabled={addingExpense}
+                className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700
+                text-white font-semibold shadow-lg shadow-blue-600/20
+                transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {addingExpense
+                  ? "Adding..."
+                  : "Add Expense"}
+              </button>
+
+            </div>
+
+          </form>
+
+        </div>
+
+        {/* ==================================================
+            EXPENSE TABLE
+        ================================================== */}
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+
+          {/* Table heading */}
+
+          <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
+
+            <div>
+              <h3 className="font-bold text-slate-900">
+                Expense History
+              </h3>
+
+              <p className="text-sm text-slate-500 mt-1">
+                {expenses.length} transaction
+                {expenses.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+
+            <div className="hidden sm:block text-sm text-slate-400">
+              Highest: ₹{formatCurrency(highestExpense)}
+            </div>
+
+          </div>
+
+          {/* Loading */}
+
+          {loading && (
+            <div className="p-12 text-center">
+
+              <div className="inline-block w-8 h-8 border-4 border-slate-200
+              border-t-blue-600 rounded-full animate-spin" />
+
+              <p className="text-sm text-slate-500 mt-4">
+                Loading expenses...
+              </p>
+
+            </div>
+          )}
+
+          {/* Empty state */}
+
+          {!loading && expenses.length === 0 && (
+            <div className="p-12 text-center">
+
+              <div className="text-5xl mb-4">
+                🧾
+              </div>
+
+              <h3 className="text-lg font-semibold text-slate-900">
+                No expenses yet
+              </h3>
+
+              <p className="text-sm text-slate-500 mt-1">
+                Add your first expense using the form above.
+              </p>
+
+            </div>
+          )}
+
+          {/* Desktop table */}
+
+          {!loading && expenses.length > 0 && (
+            <div className="overflow-x-auto">
+
+              <table className="w-full">
+
+                <thead className="bg-slate-50">
+
+                  <tr className="text-left">
+
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Amount
+                    </th>
+
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Description
+                    </th>
+
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Date
+                    </th>
+
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Time
+                    </th>
+
+                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">
+                      Actions
+                    </th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+
+                  {expenses.map((item) => (
+
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50 transition-colors"
+                    >
+
+                      <td className="px-6 py-4">
+
+                        <span className="font-semibold text-slate-900">
+                          ₹{formatCurrency(item.amount)}
+                        </span>
+
+                      </td>
+
+                      <td className="px-6 py-4">
+
+                        <span className="text-slate-700">
+                          {item.description}
+                        </span>
+
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-slate-500">
+                        {item.spendingDate}
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-slate-500">
+                        {item.spendingTime}
+                      </td>
+
+                      <td className="px-6 py-4">
+
+                        <div className="flex justify-end gap-2">
+
+                          <button
+                            type="button"
+                            onClick={() => editExpense(item)}
+                            className="w-9 h-9 rounded-lg bg-blue-50
+                            text-blue-600 hover:bg-blue-600 hover:text-white
+                            transition-colors"
+                            title="Edit expense"
+                          >
+                            ✎
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deleteExpense(item.id)}
+                            className="w-9 h-9 rounded-lg bg-red-50
+                            text-red-600 hover:bg-red-600 hover:text-white
+                            transition-colors"
+                            title="Delete expense"
+                          >
+                            🗑
+                          </button>
+
+                        </div>
+
+                      </td>
+
+                    </tr>
+
+                  ))}
+
+                </tbody>
+
+              </table>
+
+            </div>
+          )}
+
+        </div>
+
+      </main>
+
+      {/* ==================================================
+          EDIT MODAL
+      ================================================== */}
+
+      {editingExpense && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+          {/* Overlay */}
+
+          <div
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            onClick={cancelEdit}
+          />
+
+          {/* Modal */}
+
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl">
+
+            {/* Header */}
+
+            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
+
+              <div>
+
+                <h3 className="text-xl font-bold text-slate-900">
+                  Edit Expense
+                </h3>
+
+                <p className="text-sm text-slate-500 mt-1">
+                  Update your transaction details
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="w-9 h-9 rounded-lg bg-slate-100
+                hover:bg-slate-200 text-slate-500 transition"
+              >
+                ✕
+              </button>
+
+            </div>
+
+            {/* Form */}
+
+            <form
+              onSubmit={updateExpense}
+              className="p-6 space-y-5"
+            >
+
+              {/* Amount */}
+
+              <div>
+
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Amount
+                </label>
+
+                <div className="relative">
+
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    ₹
+                  </span>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editingExpense.amount}
+                    onChange={(e) =>
+                      setEditingExpense({
+                        ...editingExpense,
+                        amount: e.target.value,
+                      })
+                    }
+                    required
+                    className="w-full pl-9 pr-4 py-3 rounded-xl border border-slate-200
+                    bg-slate-50 focus:outline-none focus:ring-2
+                    focus:ring-blue-500 focus:border-transparent"
+                  />
+
+                </div>
+
+              </div>
+
+              {/* Description */}
+
+              <div>
+
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Description
+                </label>
+
+                <input
+                  type="text"
+                  value={editingExpense.description}
+                  onChange={(e) =>
+                    setEditingExpense({
+                      ...editingExpense,
+                      description: e.target.value,
+                    })
+                  }
+                  required
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200
+                  bg-slate-50 focus:outline-none focus:ring-2
+                  focus:ring-blue-500 focus:border-transparent"
+                />
+
+              </div>
+
+              {/* Date & time */}
+
+              <div className="grid grid-cols-2 gap-4">
+
+                <div>
+
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Date
+                  </label>
+
+                  <input
+                    type="text"
+                    value={editingExpense.spendingDate || ""}
+                    readOnly
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200
+                    bg-slate-100 text-slate-500"
+                  />
+
+                </div>
+
+                <div>
+
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Time
+                  </label>
+
+                  <input
+                    type="text"
+                    value={editingExpense.spendingTime || ""}
+                    readOnly
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200
+                    bg-slate-100 text-slate-500"
+                  />
+
+                </div>
+
+              </div>
+
+              {/* Buttons */}
+
+              <div className="flex justify-end gap-3 pt-2">
+
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="px-5 py-3 rounded-xl border border-slate-200
+                  text-slate-700 font-medium hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={updatingExpense}
+                  className="px-5 py-3 rounded-xl bg-blue-600
+                  hover:bg-blue-700 text-white font-semibold
+                  transition disabled:opacity-60"
+                >
+                  {updatingExpense
+                    ? "Updating..."
+                    : "Save Changes"}
+                </button>
+
+              </div>
+
+            </form>
+
+          </div>
+
+        </div>
+
+      )}
+
+    </div>
   );
 }
 

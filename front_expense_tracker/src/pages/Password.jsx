@@ -13,114 +13,220 @@ function Password() {
   });
 
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
-  const backToHome = () => {
-    navigate("/login");
-  };
 
   const resetPassword = async (e) => {
     e.preventDefault();
-    console.log("resetPassword clicked");
+
+    setError("");
+    setSuccess("");
+
+    if (user.oldPassword === user.newPassword) {
+      setError("Old password and new password cannot be the same.");
+      return;
+    }
+
+    if (user.newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+
+    if (user.newPassword.length < 6) {
+      setError("New password must contain at least 6 characters.");
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      if (user.oldPassword === user.newPassword)
-        throw new Error("Old password and New password should not be same");
+      const resetPassURL =
+        `${BASE_URL}/${CONTEXT}/${API}/auth/reset_password`;
 
-      if (user.newPassword !== confirmPassword)
-        throw new Error("Password did not matched");
-
-      const resetPassURL = `${BASE_URL}/${CONTEXT}/${API}/auth/reset_password`;
-
-      const resetJSON = JSON.stringify(user);
-      console.log(
-        "Reset JSON: " + resetJSON + ", confirm : " + confirmPassword,
-      );
-
-      // check if the login details are good
       const response = await fetch(resetPassURL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: resetJSON,
+        body: JSON.stringify(user),
       });
-      if (!response.ok) throw new Error("Unable to reset password");
+
+      if (!response.ok) {
+        throw new Error("Unable to reset password.");
+      }
+
+      setSuccess("Password updated successfully!");
+
+      setTimeout(() => {
+        navigate("/login");
+      }, 1200);
+
     } catch (error) {
-      console.log(error);
+      setError(error.message || "Unable to reset password.");
+    } finally {
+      setLoading(false);
     }
   };
+
   return (
-    <>
-      <div className="min-h-screen flex flex-col items-center justify-center border-2">
-        <div className="border-2 border-black rounded-xl p-10 shadow-2xl">
-          <div className="mt-2">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 flex items-center justify-center px-4">
+
+      {/* Background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-md">
+
+        {/* Header */}
+        <div className="text-center mb-8">
+
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/30 mb-5">
+            <span className="text-3xl">🔐</span>
+          </div>
+
+          <h1 className="text-4xl font-bold text-white">
+            Reset Password
+          </h1>
+
+          <p className="text-slate-400 mt-2">
+            Update your account password securely
+          </p>
+
+        </div>
+
+        {/* Card */}
+        <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8">
+
+          {/* Back */}
+          <button
+            type="button"
+            onClick={() => navigate("/login")}
+            className="text-sm text-slate-500 hover:text-blue-600 transition mb-6"
+          >
+            ← Back to login
+          </button>
+
+          {error && (
+            <div className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-5 rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+              {success}
+            </div>
+          )}
+
+          <form onSubmit={resetPassword} className="space-y-5">
+
+            {/* Identifier */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Username or Email
+              </label>
+
+              <input
+                type="text"
+                placeholder="Enter your username or email"
+                value={user.identifier}
+                onChange={(e) =>
+                  setUser({
+                    ...user,
+                    identifier: e.target.value,
+                  })
+                }
+                required
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50
+                focus:outline-none focus:ring-2 focus:ring-blue-500
+                focus:border-transparent transition"
+              />
+            </div>
+
+            {/* Old password */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Current Password
+              </label>
+
+              <input
+                type="password"
+                placeholder="Enter current password"
+                value={user.oldPassword}
+                onChange={(e) =>
+                  setUser({
+                    ...user,
+                    oldPassword: e.target.value,
+                  })
+                }
+                required
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50
+                focus:outline-none focus:ring-2 focus:ring-blue-500
+                focus:border-transparent transition"
+              />
+            </div>
+
+            {/* New password */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                New Password
+              </label>
+
+              <input
+                type="password"
+                placeholder="Enter new password"
+                value={user.newPassword}
+                onChange={(e) =>
+                  setUser({
+                    ...user,
+                    newPassword: e.target.value,
+                  })
+                }
+                required
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50
+                focus:outline-none focus:ring-2 focus:ring-blue-500
+                focus:border-transparent transition"
+              />
+            </div>
+
+            {/* Confirm */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Confirm New Password
+              </label>
+
+              <input
+                type="password"
+                placeholder="Repeat new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50
+                focus:outline-none focus:ring-2 focus:ring-blue-500
+                focus:border-transparent transition"
+              />
+            </div>
+
             <button
-              className="bg-red-500 text-white pb-1 pt-1 pr-3 pl-3 rounded-2xl hover:bg-red-900"
-              onClick={backToHome}
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700
+              text-white font-semibold shadow-lg shadow-blue-600/20
+              transition-all duration-200
+              disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              ╰┈➤Back
+              {loading ? "Updating password..." : "Update Password"}
             </button>
-          </div>
-          <div className="flex flex-col">
-            <form onSubmit={resetPassword}>
-              <div className="mt-2 mb-2">
-                <input
-                  className="rounded-2xl border-2 p-2 mt-1"
-                  type="text"
-                  placeholder="Username or Email"
-                  onChange={(e) =>
-                    setUser({
-                      ...user,
-                      identifier: e.target.value,
-                    })
-                  }
-                  required
-                />
-              </div>
-              <div className="mb-2">
-                <input
-                  className="rounded-2xl border-2 p-2 mt-1"
-                  type="password"
-                  placeholder="Password"
-                  onChange={(e) =>
-                    setUser({ ...user, oldPassword: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div className="mb-2">
-                <input
-                  className="rounded-2xl border-2 p-2 mt-1"
-                  type="password"
-                  placeholder="New Password"
-                  onChange={(e) =>
-                    setUser({ ...user, newPassword: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div className="mb-2">
-                <input
-                  className="rounded-2xl border-2 p-2 mt-1"
-                  type="password"
-                  placeholder="Confirm Password"
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="mb-2">
-                <button
-                  className="w-full bg-blue-600 text-white pb-1 pt-1 pr-3 pl-3 mt-3 rounded-2xl hover:bg-blue-900"
-                  type="submit"
-                >
-                  🚪Reset Password
-                </button>
-              </div>
-            </form>
-          </div>
+
+          </form>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

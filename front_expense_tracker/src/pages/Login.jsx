@@ -7,7 +7,8 @@ function Login() {
     password: "",
   });
 
-  const [userType, setUserType] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
 
@@ -18,93 +19,174 @@ function Login() {
   const handleLogin = async (event) => {
     event.preventDefault();
 
-    const loginURL = `${BASE_URL}/${CONTEXT}/${API}/auth/login`;
+    setError("");
+    setLoading(true);
 
-    // console.log("Login: " + loginURL);
-    // console.log("User: " + JSON.stringify(user));
+    const loginURL = `${BASE_URL}/${CONTEXT}/${API}/auth/login`;
 
     try {
       const response = await fetch(loginURL, {
-        method: "post",
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(user),
         credentials: "include",
       });
-      if (response.ok) {
-        const result = await response.json();
-        setUserType(result.role);
-        navigate("/expenses", {
-          state: { userType: result.role },
-        });
+
+      if (!response.ok) {
+        throw new Error("Invalid username/email or password");
       }
+
+      const result = await response.json();
+
+      navigate("/expenses", {
+        state: { userType: result.role },
+      });
     } catch (error) {
-      console.log("Error: " + error);
+      setError(error.message || "Unable to login. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center border-2">
-      <div className="text-3xl mb-10 p-3 rounded-b-xl shadow-2xl">
-        <h1>Expense Tracker</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 flex items-center justify-center px-4">
+
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
       </div>
-      <div className="border-2 border-black rounded-xl p-10 shadow-2xl">
-        <div className="flex flex-col justify-center items-center">
-          <form onSubmit={handleLogin}>
+
+      <div className="relative w-full max-w-md">
+
+        {/* Logo / Heading */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/30 mb-5">
+            <span className="text-3xl">₹</span>
+          </div>
+
+          <h1 className="text-4xl font-bold text-white tracking-tight">
+            Expense Tracker
+          </h1>
+
+          <p className="text-slate-400 mt-2">
+            Manage your money. Track your spending.
+          </p>
+        </div>
+
+        {/* Login Card */}
+        <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8">
+
+          <div className="mb-7">
+            <h2 className="text-2xl font-bold text-slate-900">
+              Welcome back
+            </h2>
+
+            <p className="text-sm text-slate-500 mt-1">
+              Sign in to continue to your dashboard
+            </p>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-5">
+
+            {/* Username */}
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Username or Email
+              </label>
+
               <input
-                className="rounded-2xl border-2 p-2 mb-1"
                 type="text"
-                placeholder="Username or Email"
+                placeholder="Enter your username or email"
+                value={user.username}
                 onChange={(e) =>
                   setUser({
                     ...user,
                     username: e.target.value,
                   })
                 }
+                required
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50
+                text-slate-900 placeholder-slate-400
+                focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                transition"
               />
             </div>
-            <div className="mb-4">
+
+            {/* Password */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Password
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => navigate("/reset_password")}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-medium transition"
+                >
+                  Forgot password?
+                </button>
+              </div>
+
               <input
-                className="rounded-2xl border-2 p-2 mt-1"
                 type="password"
-                placeholder="Password"
+                placeholder="Enter your password"
+                value={user.password}
                 onChange={(e) =>
                   setUser({
                     ...user,
                     password: e.target.value,
                   })
                 }
+                required
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50
+                text-slate-900 placeholder-slate-400
+                focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                transition"
               />
-              <p
-                className="mt-1 text-center text-sm text-gray-500 hover:text-blue-600 cursor-pointer transition-colors duration-200"
-                onClick={() => navigate("/reset_password")}
-              >
-                Forget Password?
-              </p>
             </div>
-            <div>
-              <button
-                className="w-full bg-blue-600 text-white pb-1 pt-1 pr-3 pl-3 rounded-xl hover:bg-blue-900"
-                type="sumbit"
-              >
-                ⛩️Login
-              </button>
-            </div>
+
+            {/* Login button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700
+              text-white font-semibold shadow-lg shadow-blue-600/20
+              transition-all duration-200
+              disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? "Signing in..." : "Sign In"}
+            </button>
           </form>
+
+          {/* Register */}
+          <div className="mt-7 pt-6 border-t border-slate-200 text-center">
+            <p className="text-sm text-slate-500">
+              Don't have an account?
+            </p>
+
+            <button
+              type="button"
+              onClick={() => navigate("/register")}
+              className="mt-2 text-blue-600 hover:text-blue-800 font-semibold transition"
+            >
+              Create an account →
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="pt-2 mt-2">
-        <p>
-          Don't have an account?
-          <button
-            className="bg-green-600 text-white ml-1 pb-1 pt-1 pr-3 pl-3 rounded-2xl hover:bg-green-900"
-            type="sumbit"
-            onClick={() => navigate("/register")}
-          >
-            🌴Register
-          </button>
+
+        <p className="text-center text-xs text-slate-500 mt-6">
+          Securely manage your personal expenses
         </p>
       </div>
     </div>
