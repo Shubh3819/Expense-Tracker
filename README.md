@@ -213,6 +213,3 @@ GET /api/expense/user/expense_records_by_month/{month}
 
 This project demonstrates a full-stack architecture using Spring Boot and React, with a secure backend, database-driven expense tracking, and a clean user interface for managing personal finances.
 
-## License
-
-This project is intended for educational and personal use unless otherwise specified by the repository owner.
